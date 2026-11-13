@@ -124,8 +124,7 @@
     return s;
   }
 
-  // Fill mode: stretches the player to the window, for players that re-lay out themselves. Returns undo.
-  // Shadow-root elements get inline styles: the PiP sheet can't reach them.
+  // Fill mode: stretch to the window, the player re-lays out. Returns undo; shadow-root parts get inline styles.
   function markFill(box, video) {
     const undo = [];
     for (let el = video; el; el = el === box ? null : up(el)) {
@@ -162,7 +161,7 @@
     return n === 0 || moved / n < 0.2;
   }
 
-  // Extension styles (ad blockers' hiding rules) aren't in document.styleSheets: re-hide what showed up. Returns undo.
+  // Blocker hiding rules aren't in document.styleSheets: re-hide what showed up. Returns undo.
   function rehide(hidden) {
     const undo = [];
     for (const el of hidden) {
@@ -180,7 +179,7 @@
     setTimeout(done, 2000);
   })));
 
-  // Scale mode: for fixed-px players that ignore resizes; keeps the original size and scales it to the window.
+  // Scale mode: fixed-px players keep their size, scaled to the window.
   function fitBox(sheet, win, w, h) {
     const scale = Math.min(win.innerWidth / w, win.innerHeight / h);
     const x = (win.innerWidth - w * scale) / 2, y = (win.innerHeight - h * scale) / 2;
