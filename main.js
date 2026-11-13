@@ -1,5 +1,4 @@
-// Runs in the page's world. A player shrunk by scale mode mixes transformed sizes (rects, clientX) with untransformed ones
-// (offsetWidth), misplacing clicks. Inside the scaled box, rects and pointer coords are reported untransformed instead.
+// Page world. Shrunk players mix scaled rects/clientX with unscaled offsetWidth: report both unscaled inside the box.
 (() => {
   if (window.__pipSubsMain) return;
   window.__pipSubsMain = true;
