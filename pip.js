@@ -140,25 +140,39 @@
     return () => undo.forEach(f => f());
   }
 
-  // Centers of the player's parts relative to its size.
+  // Centers of the player's smaller parts relative to its size; full-size layers say nothing about the layout.
   function partsLayout(parts, box) {
     const b = box.getBoundingClientRect();
     return parts.map(e => {
       const r = e.getBoundingClientRect();
-      return r.width && r.height ? [(r.left + r.width / 2 - b.left) / b.width, (r.top + r.height / 2 - b.top) / b.height] : null;
+      if (!r.width || !r.height || r.width * r.height > b.width * b.height / 2) return null;
+      return [(r.left + r.width / 2 - b.left) / b.width, (r.top + r.height / 2 - b.top) / b.height];
     });
   }
 
-  // Fixed-px layouts keep parts at the old px positions, so their relative centers move.
+  // After a 1.6x stretch, fixed-px parts keep their px positions, so their relative centers move a lot.
   function followsResize(before, after) {
     let n = 0, moved = 0;
     before.forEach((p, i) => {
       const q = after[i];
       if (!p || !q) return;
       n++;
-      if (Math.abs(p[0] - q[0]) > 0.04 || Math.abs(p[1] - q[1]) > 0.04) moved++;
+      if (Math.abs(p[0] - q[0]) > 0.1 || Math.abs(p[1] - q[1]) > 0.1) moved++;
     });
-    return n === 0 || moved / n < 0.2;
+    return n === 0 || moved / n < 0.3;
+  }
+
+  // Briefly stretches the player (hidden) far from its page size to see whether its layout follows.
+  async function probeResponsive(sheet, box, parts, before, g) {
+    sheet.replaceSync(`${strong('[data-pip-subs-probe]')} { width: ${g.w * 1.6}px !important; height: ${g.h * 1.6}px !important;
+      visibility: hidden !important; }`);
+    box.setAttribute('data-pip-subs-probe', '');
+    nudgeLayout();
+    await new Promise(r => setTimeout(r, 250));
+    const result = followsResize(before, partsLayout(parts, box));
+    box.removeAttribute('data-pip-subs-probe');
+    sheet.replaceSync('');
+    return result;
   }
 
   // Blocker hiding rules aren't in document.styleSheets: re-hide what showed up. Returns undo.
@@ -179,11 +193,11 @@
     setTimeout(done, 2000);
   })));
 
-  // Scale mode (fixed-px players): only the video grows; the rest keeps its px size, so click math stays right.
-  // `g`: box size, video offset/size in it.
+  // Scale mode (fixed-px players): only the video grows; the rest keeps its on-page size.
+  // `g`: box size, video offset/size in it. Page zoom differs from the PiP window's: the dpr ratio keeps the physical size.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
-    const k = Math.min(1, W / g.w, H / g.h);
+    const k = Math.min(window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
     const s = Math.min(W / g.vw, H / g.vh);
     const vx = (W - g.vw * s) / 2, vy = (H - g.vh * s) / 2;
     const clamp = (v, max) => Math.max(0, Math.min(v, max));
@@ -344,7 +358,8 @@
     const wasPlaying = !video.paused;
     const parts = [...box.querySelectorAll('*')].filter(e => e !== video);
     const hidden = parts.filter(e => getComputedStyle(e).display === 'none');
-    const before = partsLayout(parts.slice(0, 400), box);
+    const sample = parts.slice(0, 400);
+    const before = partsLayout(sample, box);
     box.before(placeholder);
     let undoMode = markFill(box, video);
     host.append(box);
@@ -354,22 +369,17 @@
     let unhide = () => {};
     linksLoaded(win.document).then(() => (unhide = rehide(hidden)));
 
-    let scaled = false, checkTimer = 0;
-    const check = () => {
-      if (scaled || followsResize(before, partsLayout(parts.slice(0, 400), box))) return;
+    let scaled = false, closed = false;
+    probeResponsive(fitSheet, box, sample, before, geo).then(responsive => {
+      nudgeLayout();
+      if (responsive || closed) return;
       scaled = true;
       undoMode();
       undoMode = unclip(box, video);
       box.setAttribute('data-pip-subs-box', '');
       fit();
-    };
-    checkTimer = setTimeout(check, 300);
-    const onResize = () => {
-      if (scaled) return fit();
-      nudgeLayout();
-      clearTimeout(checkTimer);
-      checkTimer = setTimeout(check, 300);
-    };
+    });
+    const onResize = () => (scaled ? fit() : nudgeLayout());
 
     let signature = sheetsSignature(placeholder);
     const timer = setInterval(() => {
@@ -388,7 +398,7 @@
       win,
       close() {
         clearInterval(timer);
-        clearTimeout(checkTimer);
+        closed = true;
         const playing = !video.paused;
         undoMode();
         unhide();
