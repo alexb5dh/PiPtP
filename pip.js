@@ -194,7 +194,7 @@
   })));
 
   // Scale mode (fixed-px players): only the video grows; the rest keeps its on-page size.
-  // `g`: box size, video offset/size in it. Page zoom differs from the PiP window's: the dpr ratio keeps the physical size.
+  // `g`: box size, video offset/size in it. dpr ratio: same physical size if page zoom differs.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
     const k = Math.min(window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
