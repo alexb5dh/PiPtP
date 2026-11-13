@@ -3,9 +3,9 @@
 A Chrome extension that moves a site's whole video player into a Picture-in-Picture window, **with its controls and
 subtitles**.
 
-▶ [Watch the demo](docs/demo.mp4)
+![The player in a PiP window](docs/seek-zone.jpg)
 
-![The player in a PiP window, with subtitles, controls and a seek zone](docs/seek-zone.jpg)
+https://github.com/user-attachments/assets/830b3571-d79d-41aa-b8c9-67036f60baf0
 
 ## Features
 
