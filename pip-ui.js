@@ -8,7 +8,12 @@
   const IDLE_MS = 5000;
   const INTERACTIVE = 'a, button, input, select, textarea, label, [role="button"], [role="slider"], [contenteditable]';
 
-  const send = message => chrome.runtime.sendMessage(message).catch(() => {});
+  // Throws instead of rejecting once the extension was reloaded.
+  const send = message => {
+    try {
+      chrome.runtime.sendMessage(message).catch(() => {});
+    } catch {}
+  };
 
   // Video picture or a full-size layer over it; not text (subtitles) or controls.
   function isPicture(el, video) {
