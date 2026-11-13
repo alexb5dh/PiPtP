@@ -182,20 +182,28 @@
     return ph;
   }
 
-  const KEY_PROPS = ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey'];
+  const MODS = ['ctrlKey', 'shiftKey', 'altKey', 'metaKey'];
+  const KEY = [KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat', ...MODS]];
+  const MOUSE_PROPS = ['clientX', 'clientY', 'screenX', 'screenY', 'movementX', 'movementY', 'button', 'buttons', 'detail', ...MODS];
+  const MOUSE = [MouseEvent, MOUSE_PROPS];
+  const POINTER = [PointerEvent, [...MOUSE_PROPS, 'pointerId', 'pointerType', 'isPrimary', 'width', 'height', 'pressure']];
+  const FORWARDED = {
+    keydown: KEY, keyup: KEY, mousemove: MOUSE, mouseup: MOUSE, pointermove: POINTER, pointerup: POINTER, pointercancel: POINTER,
+  };
 
-  // PiP keys never reach the page's handlers: re-dispatch there.
-  function forwardKey(e) {
-    const init = Object.fromEntries(KEY_PROPS.map(k => [k, e[k]]));
-    const copy = new KeyboardEvent(e.type, { ...init, bubbles: true, cancelable: true, composed: true });
-    (document.body ?? document.documentElement).dispatchEvent(copy);
+  // PiP events never reach the page's document-level handlers (shortcuts, slider drags): re-dispatch there.
+  function forward(e, target) {
+    const [Type, props] = FORWARDED[e.type];
+    const init = Object.fromEntries(props.map(k => [k, e[k]]));
+    const copy = new Type(e.type, { ...init, bubbles: true, cancelable: true, composed: true, view: window });
+    target.dispatchEvent(copy);
     return copy.defaultPrevented;
   }
 
   // Player's own handlers (moved with it) first, then the page's, then ours.
   async function onKey(e, video) {
     if (e.defaultPrevented) return;
-    if (forwardKey(e)) return e.preventDefault();
+    if (forward(e, document.body ?? document.documentElement)) return e.preventDefault();
     const action = e.type === 'keydown' && ownAction(e, video);
     if (!action) return;
     e.preventDefault();
@@ -264,6 +272,9 @@
     const key = e => onKey(e, video);
     win.addEventListener('keydown', key);
     win.addEventListener('keyup', key);
+    for (const type of Object.keys(FORWARDED)) {
+      if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document));
+    }
     win.addEventListener('resize', nudgeLayout);
     setTimeout(nudgeLayout, 50);
 
