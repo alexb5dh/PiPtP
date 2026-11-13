@@ -151,7 +151,7 @@
   }
 
   // After a 1.6x stretch, fixed-px parts keep their px positions, so their relative centers move a lot.
-  function followsResize(before, after) {
+  function movedParts(before, after) {
     let n = 0, moved = 0;
     before.forEach((p, i) => {
       const q = after[i];
@@ -159,7 +159,7 @@
       n++;
       if (Math.abs(p[0] - q[0]) > 0.1 || Math.abs(p[1] - q[1]) > 0.1) moved++;
     });
-    return n === 0 || moved / n < 0.3;
+    return { n, moved };
   }
 
   // Briefly stretches the player (hidden) far from its page size to see whether its layout follows.
@@ -169,10 +169,10 @@
     box.setAttribute('data-pip-subs-probe', '');
     nudgeLayout();
     await new Promise(r => setTimeout(r, 250));
-    const result = followsResize(before, partsLayout(parts, box));
+    const stats = movedParts(before, partsLayout(parts, box));
     box.removeAttribute('data-pip-subs-probe');
     sheet.replaceSync('');
-    return result;
+    return { ...stats, responsive: stats.n === 0 || stats.moved / stats.n < 0.3 };
   }
 
   // Blocker hiding rules aren't in document.styleSheets: re-hide what showed up. Returns undo.
@@ -194,10 +194,10 @@
   })));
 
   // Scale mode (fixed-px players): only the video grows; the rest keeps its on-page size.
-  // `g`: box size, video offset/size in it. dpr ratio: same physical size if page zoom differs.
+  // `g`: box size, video offset/size in it. dpr ratio: same physical size if the page is zoomed out.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
-    const k = Math.min(window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
+    const k = Math.min(1, window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
     const s = Math.min(W / g.vw, H / g.vh);
     const vx = (W - g.vw * s) / 2, vy = (H - g.vh * s) / 2;
     const clamp = (v, max) => Math.max(0, Math.min(v, max));
@@ -370,14 +370,17 @@
     linksLoaded(win.document).then(() => (unhide = rehide(hidden)));
 
     let scaled = false, closed = false;
-    probeResponsive(fitSheet, box, sample, before, geo).then(responsive => {
+    probeResponsive(fitSheet, box, sample, before, geo).then(probe => {
       nudgeLayout();
-      if (responsive || closed) return;
-      scaled = true;
-      undoMode();
-      undoMode = unclip(box, video);
-      box.setAttribute('data-pip-subs-box', '');
-      fit();
+      if (!probe.responsive && !closed) {
+        scaled = true;
+        undoMode();
+        undoMode = unclip(box, video);
+        box.setAttribute('data-pip-subs-box', '');
+        fit();
+      }
+      console.info('pip-subs', JSON.stringify({ mode: scaled ? 'scale' : 'fill', probe, frame, box: box.id || box.className,
+        geo, win: [win.innerWidth, win.innerHeight], dpr: [window.devicePixelRatio, win.devicePixelRatio] }));
     });
     const onResize = () => (scaled ? fit() : nudgeLayout());
 
