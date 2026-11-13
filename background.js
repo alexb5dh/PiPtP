@@ -14,8 +14,7 @@ async function toggle(tabId) {
   }
 }
 
-// Option "Replace site PiP buttons": a checkbox in the toolbar icon's menu. When on, every page gets override.js
-// at start and the PiP code once loaded; when off, nothing runs until the shortcut.
+// Option "Replace site PiP buttons" (icon menu checkbox): when on, all pages load override.js and the PiP code.
 const OVERRIDE = 'override-site-pip';
 const OVERRIDE_SCRIPTS = [
   { id: 'override-main', matches: ['<all_urls>'], allFrames: true, runAt: 'document_start', world: 'MAIN', js: ['main.js', 'override.js'] },
