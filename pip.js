@@ -484,7 +484,7 @@
   function offerButton(video) {
     const r = video.getBoundingClientRect();
     const btn = document.createElement('button');
-    btn.textContent = 'Open PiP with subtitles';
+    btn.textContent = 'Open player PiP';
     Object.assign(btn.style, {
       position: 'fixed', zIndex: 2147483647, left: `${r.left + 12}px`, top: `${r.top + 12}px`,
       padding: '8px 12px', font: '14px sans-serif', background: '#1a73e8', color: '#fff', border: 0, borderRadius: '6px',

@@ -1,16 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "PiP with Subtitles",
-  "version": "0.6.1",
-  "description": "Picture-in-Picture that keeps the site's own subtitles (moves the whole player into a Document PiP window).",
+  "name": "PiP the Player",
+  "short_name": "PiPtP",
+  "version": "0.6.2",
+  "description": "Moves a site's whole video player into a Picture-in-Picture window, with its controls and subtitles.",
   "permissions": ["scripting", "activeTab", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "PiP with subtitles" },
+  "action": { "default_title": "PiP the Player" },
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Alt+P" },
-      "description": "Toggle Picture-in-Picture with subtitles"
+      "description": "Toggle Picture-in-Picture for the player"
     }
   }
 }

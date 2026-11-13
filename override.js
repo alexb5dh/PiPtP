@@ -1,4 +1,4 @@
-// Page world, option "Replace site PiP buttons": a site's requestPictureInPicture opens the subtitles PiP (pip.js) instead.
+// Page world, option "Replace site PiP buttons": a site's requestPictureInPicture opens the player PiP (pip.js) instead.
 (() => {
   if (window.__pipSubsOverride || window !== window.top || !window.documentPictureInPicture) return;
   window.__pipSubsOverride = true;
