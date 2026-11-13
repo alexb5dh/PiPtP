@@ -27,12 +27,16 @@
     return best;
   }
 
+  const up = el => el.parentElement ?? el.parentNode?.host ?? null;
+
   // Highest video-sized ancestor: holds subs/controls, not the page.
+  // Custom elements may reset when moved: crossed only as a shadow host or the video's direct wrapper.
   function findPlayerBox(video) {
     const vr = video.getBoundingClientRect();
     let box = video;
-    for (let el = video.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
-      if (el.localName.includes('-')) break;
+    for (let el = up(video); el && el !== document.body && el !== document.documentElement; el = up(el)) {
+      const isHost = el.shadowRoot != null && box.getRootNode() === el.shadowRoot;
+      if (el.localName.includes('-') && box !== video && !isHost) break;
       const r = el.getBoundingClientRect();
       if (r.width > vr.width * 1.1 + 24 || r.height > vr.height * 1.25 + 64) break;
       box = el;
@@ -57,19 +61,27 @@
     return parts.join('\n');
   }
 
-  function sheetsSignature() {
-    const items = [...document.styleSheets, ...(document.adoptedStyleSheets ?? [])];
-    return items.map(s => {
+  function sheetsSignature(node) {
+    return sourceSheets(node).map(s => {
       try { return `${s.href}:${s.cssRules.length}`; } catch { return `${s.href}:x`; }
     }).join('|');
   }
 
   // Constructed sheets: page CSP may block <style>.
-  function syncStyles(win) {
+  const rootSheets = root => [...root.styleSheets, ...(root.adoptedStyleSheets ?? [])];
+
+  // A box inside a shadow root needs that root's styles too.
+  function sourceSheets(node) {
+    const sheets = rootSheets(document);
+    for (let root = node.getRootNode(); root instanceof ShadowRoot; root = root.host.getRootNode()) sheets.push(...rootSheets(root));
+    return sheets;
+  }
+
+  function syncStyles(win, node) {
     const doc = win.document;
     doc.querySelectorAll('link[data-pip-subs]').forEach(l => l.remove());
     const adopted = [];
-    for (const sheet of [...document.styleSheets, ...(document.adoptedStyleSheets ?? [])]) {
+    for (const sheet of sourceSheets(node)) {
       if (sheet.disabled) continue;
       const text = sheetText(sheet);
       if (text == null) {
@@ -110,8 +122,12 @@
     return s;
   }
 
+  // Inline styles keep CSS variables and fonts; !important dropped so fill rules win.
   function copyAttributes(from, to) {
-    for (const a of from.attributes) if (a.name !== 'style') to.setAttribute(a.name, a.value);
+    for (const a of from.attributes) to.setAttribute(a.name, a.value);
+    for (const name of [...to.style]) {
+      if (to.style.getPropertyPriority(name)) to.style.setProperty(name, to.style.getPropertyValue(name));
+    }
   }
 
   // Empty ancestor copies keep descendant selectors matching.
@@ -120,7 +136,7 @@
     copyAttributes(document.body, doc.body);
     let parent = doc.body;
     const chain = [];
-    for (let el = box.parentElement; el && el !== document.body; el = el.parentElement) chain.unshift(el);
+    for (let el = up(box); el && el !== document.body; el = up(el)) chain.unshift(el);
     for (const el of chain) {
       const shell = doc.createElement(el.localName);
       copyAttributes(el, shell);
@@ -131,15 +147,26 @@
     return parent;
   }
 
+  const FILL = {
+    display: 'block', position: 'relative', inset: 'auto', width: '100%', height: '100%', 'min-width': '0', 'min-height': '0',
+    'max-width': 'none', 'max-height': 'none', margin: '0', padding: '0', border: '0', transform: 'none', overflow: 'hidden',
+  };
+  const FILL_VIDEO = { ...FILL, position: 'absolute', left: '0', top: '0', 'object-fit': 'contain' };
+
+  // Returns undo. Shadow-root elements get inline styles: the PiP sheet can't reach them.
   function markFill(box, video) {
-    const marked = [];
-    for (let el = video; el; el = el === box ? null : el.parentElement) {
-      if (!el.hasAttribute('data-pip-subs-fill')) {
+    const undo = [];
+    for (let el = video; el; el = el === box ? null : up(el)) {
+      if (el.getRootNode() instanceof ShadowRoot) {
+        const style = el.getAttribute('style');
+        for (const [k, v] of Object.entries(el === video ? FILL_VIDEO : FILL)) el.style.setProperty(k, v, 'important');
+        undo.push(() => (style == null ? el.removeAttribute('style') : el.setAttribute('style', style)));
+      } else if (!el.hasAttribute('data-pip-subs-fill')) {
         el.setAttribute('data-pip-subs-fill', '');
-        marked.push(el);
+        undo.push(() => el.removeAttribute('data-pip-subs-fill'));
       }
     }
-    return marked;
+    return () => undo.forEach(f => f());
   }
 
   function makePlaceholder(box) {
@@ -155,21 +182,48 @@
     return ph;
   }
 
-  function onKey(e, video) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const handled = {
-      ' ': () => (video.paused ? video.play() : video.pause()),
-      k: () => (video.paused ? video.play() : video.pause()),
+  const KEY_PROPS = ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey'];
+
+  // PiP keys never reach the page's handlers: re-dispatch there.
+  function forwardKey(e) {
+    const init = Object.fromEntries(KEY_PROPS.map(k => [k, e[k]]));
+    const copy = new KeyboardEvent(e.type, { ...init, bubbles: true, cancelable: true, composed: true });
+    (document.body ?? document.documentElement).dispatchEvent(copy);
+    return copy.defaultPrevented;
+  }
+
+  // Player's own handlers (moved with it) first, then the page's, then ours.
+  async function onKey(e, video) {
+    if (e.defaultPrevented) return;
+    if (forwardKey(e)) return e.preventDefault();
+    const action = e.type === 'keydown' && ownAction(e, video);
+    if (!action) return;
+    e.preventDefault();
+    // Sites often handle keys without preventDefault(): act only if the video didn't react.
+    const before = videoState(video);
+    await new Promise(r => setTimeout(r, 200));
+    if (!reacted(before, video)) action();
+  }
+
+  const videoState = v => ({ paused: v.paused, time: v.currentTime, at: performance.now(), volume: v.volume, muted: v.muted });
+
+  function reacted(s, v) {
+    const expected = s.time + (s.paused ? 0 : ((performance.now() - s.at) / 1000) * v.playbackRate);
+    return v.paused !== s.paused || v.volume !== s.volume || v.muted !== s.muted || v.seeking || Math.abs(v.currentTime - expected) > 1;
+  }
+
+  function ownAction(e, video) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return null;
+    const toggle = () => (video.paused ? video.play() : video.pause());
+    return {
+      ' ': toggle,
+      k: toggle,
       ArrowLeft: () => (video.currentTime -= 5),
       ArrowRight: () => (video.currentTime += 5),
       ArrowUp: () => (video.volume = Math.min(1, video.volume + 0.1)),
       ArrowDown: () => (video.volume = Math.max(0, video.volume - 0.1)),
       m: () => (video.muted = !video.muted),
-    }[e.key];
-    if (!handled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    handled();
+    }[e.key] ?? null;
   }
 
   const nudgeLayout = () => window.dispatchEvent(new Event('resize'));
@@ -193,22 +247,23 @@
       throw e;
     }
 
-    syncStyles(win);
+    syncStyles(win, box);
     const host = buildShell(win.document, box);
     const placeholder = makePlaceholder(box);
     const wasPlaying = !video.paused;
     box.before(placeholder);
-    const marked = markFill(box, video);
+    const unmark = markFill(box, video);
     host.append(box);
     if (wasPlaying && video.paused) video.play().catch(() => {});
 
-    let signature = sheetsSignature();
+    let signature = sheetsSignature(placeholder);
     const timer = setInterval(() => {
-      const s = sheetsSignature();
-      if (s !== signature) { signature = s; syncStyles(win); }
+      const s = sheetsSignature(placeholder);
+      if (s !== signature) { signature = s; syncStyles(win, placeholder); }
     }, 1000);
     const key = e => onKey(e, video);
-    win.addEventListener('keydown', key, true);
+    win.addEventListener('keydown', key);
+    win.addEventListener('keyup', key);
     win.addEventListener('resize', nudgeLayout);
     setTimeout(nudgeLayout, 50);
 
@@ -217,7 +272,7 @@
       close() {
         clearInterval(timer);
         const playing = !video.paused;
-        marked.forEach(el => el.removeAttribute('data-pip-subs-fill'));
+        unmark();
         placeholder.replaceWith(box);
         if (playing && video.paused) video.play().catch(() => {});
         session = null;
