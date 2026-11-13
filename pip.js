@@ -195,10 +195,10 @@
   })));
 
   // Scale mode (fixed-px players): only the video grows; the rest keeps its on-page size.
-  // `g`: box size, video offset/size in it. dpr ratio: same physical size if the page is zoomed out.
+  // `g`: box size, video offset/size in it.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
-    const k = Math.min(1, window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
+    const k = Math.min(1, W / g.w, H / g.h);
     const s = Math.min(W / g.vw, H / g.vh);
     const vx = (W - g.vw * s) / 2, vy = (H - g.vh * s) / 2;
     const clamp = (v, max) => Math.max(0, Math.min(v, max));
