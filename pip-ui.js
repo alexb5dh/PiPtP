@@ -5,6 +5,7 @@
   const SEEK_SECONDS = 10;
   const ZONE_WIDTH = 0.3;
   const DRAG_THRESHOLD = 4;
+  const IDLE_MS = 5000;
   const INTERACTIVE = 'a, button, input, select, textarea, label, [role="button"], [role="slider"], [contenteditable]';
 
   const send = message => chrome.runtime.sendMessage(message).catch(() => {});
@@ -90,13 +91,19 @@
     win.addEventListener('resize', () => win.requestAnimationFrame(layout));
     const timer = setInterval(layout, 1000);
     win.addEventListener('pagehide', () => clearInterval(timer), { once: true });
+    const show = side => glows.forEach((glow, dir) => {
+      glow.classList.toggle('shown', side != null);
+      glow.classList.toggle('hover', dir === side);
+    });
+    let idle = 0;
     return {
       layout,
       // side: zone under the pointer (0: picture between zones), null: pointer not on the picture.
-      hover: side => glows.forEach((glow, dir) => {
-        glow.classList.toggle('shown', side != null);
-        glow.classList.toggle('hover', dir === side);
-      }),
+      hover(side) {
+        clearTimeout(idle);
+        if (side != null) idle = setTimeout(() => show(null), IDLE_MS);
+        show(side);
+      },
       flash(side) {
         const glow = glows.get(side);
         glow.classList.remove('flash');

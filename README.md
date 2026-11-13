@@ -18,7 +18,8 @@ of the video, so they are lost in PiP. This extension uses Document Picture-in-P
 - **Keyboard** - the site's own shortcuts work in the PiP window. Fallback keys when a site has none: `Space`/`K`
   play/pause, `←`/`→` seek 5 s, `↑`/`↓` volume, `M` mute.
 - **Move the window by dragging the video** - like Chrome's own PiP. Controls and subtitles keep their clicks.
-- **Seek zones** - hovering the video shows the left and right 30%; a click there seeks back or forward 10 s.
+- **Seek zones** - hovering the video shows the left and right 30% (hidden after 5 s without mouse movement); a click there
+  seeks back or forward 10 s.
 
   ![Seek zone on hover](docs/seek-zone.jpg)
 
