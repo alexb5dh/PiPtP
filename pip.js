@@ -179,9 +179,8 @@
     setTimeout(done, 2000);
   })));
 
-  // Scale mode, for fixed-px players: the video alone grows to the window; the rest keeps its px size
-  // (shrinks only to fit), aligned to the video's bottom. Unscaled controls also keep the player's click math right.
-  // `g`: box size and the video's offset/size inside it, in px.
+  // Scale mode (fixed-px players): only the video grows; the rest keeps its px size, so click math stays right.
+  // `g`: box size, video offset/size in it.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
     const k = Math.min(1, W / g.w, H / g.h);
