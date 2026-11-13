@@ -1,6 +1,6 @@
 (() => {
   // No runtime id: left over from before an extension reload, so replace it.
-  if (window.__pipSubs && chrome.runtime?.id) return;
+  if (window.__pipSubs && globalThis.chrome?.runtime?.id) return;
 
   const MIN_W = 160, MIN_H = 90;
   let session = null;
@@ -198,6 +198,7 @@
       ${strong('video[data-pip-subs-unclip]')} { transform-origin: 0 0 !important;
         transform: translate(${tx}px, ${ty}px) scale(${s / k}) !important; }
     `);
+    return { k, x: bx, y: by };
   }
 
   // The grown video must not be clipped by the player's own boxes. Returns undo.
@@ -258,9 +259,14 @@
   };
 
   // PiP events never reach the page's document-level handlers (shortcuts, slider drags): re-dispatch there.
-  function forward(e, target) {
+  // `frame`: scaled box, coords go unscaled like main.js reports them.
+  function forward(e, target, frame) {
     const [Type, props] = FORWARDED[e.type];
     const init = Object.fromEntries(props.map(k => [k, e[k]]));
+    if (frame && 'clientX' in init) {
+      init.clientX = frame.x + (init.clientX - frame.x) / frame.k;
+      init.clientY = frame.y + (init.clientY - frame.y) / frame.k;
+    }
     const copy = new Type(e.type, { ...init, bubbles: true, cancelable: true, composed: true, view: window });
     target.dispatchEvent(copy);
     return copy.defaultPrevented;
@@ -326,7 +332,11 @@
       ? { w: r.width, h: r.height, vx: vr.left - r.left, vy: vr.top - r.top, vw: vr.width, vh: vr.height }
       : { w: r.width, h: r.height, vx: 0, vy: 0, vw: r.width, vh: r.height };
     const fitSheet = new win.CSSStyleSheet();
-    const fit = () => fitBox(fitSheet, win, geo);
+    let frame = null;
+    const fit = () => {
+      frame = fitBox(fitSheet, win, geo);
+      box.setAttribute('data-pip-subs-frame', `${frame.k},${frame.x},${frame.y}`);
+    };
     const ownSheets = [baseSheet(win), fitSheet];
     syncStyles(win, box, ownSheets);
     const host = buildShell(win.document, box);
@@ -370,7 +380,7 @@
     win.addEventListener('keydown', key);
     win.addEventListener('keyup', key);
     for (const type of Object.keys(FORWARDED)) {
-      if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document));
+      if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document, frame));
     }
     win.addEventListener('resize', onResize);
 
@@ -383,6 +393,7 @@
         undoMode();
         unhide();
         box.removeAttribute('data-pip-subs-box');
+        box.removeAttribute('data-pip-subs-frame');
         placeholder.replaceWith(box);
         if (playing && video.paused) video.play().catch(() => {});
         session = null;
