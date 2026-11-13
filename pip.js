@@ -218,9 +218,8 @@
 
   const EDGE = 0.25;
 
-  // Scale mode: a box smaller than the video leaves its top and center parts (title, PiP button, play button) off place.
-  // `translate` (composes with the player's own transforms) moves them to the video's top edge/corners or center.
-  // Bottom-zone and off-center middle parts stay: they belong to the control bar, already on the video's bottom.
+  // Scale mode, box smaller than the video: move its top/center parts (PiP, play buttons) to the video's top/center.
+  // `translate` composes with the player's transforms. Bottom and off-center parts stay with the control bar.
   function edgeAnchors(win, box, video) {
     const applied = new Map();
     let frame = null, raf = 0;
