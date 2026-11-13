@@ -321,8 +321,7 @@
     return ph;
   }
 
-  // Moving an iframe to another document reloads it, dropping listeners on its window (e.g. a player's resize sensor).
-  // Blank (script-filled) ones wait in the placeholder instead; moveBefore() keeps them alive. Returns undo.
+  // Moved iframes reload and lose their listeners (resize sensors): keep blank ones on the page. Returns undo.
   function keepFrames(box, placeholder) {
     if (!placeholder.moveBefore) return () => {};
     const shelf = document.createElement('div');
