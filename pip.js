@@ -179,14 +179,36 @@
     setTimeout(done, 2000);
   })));
 
-  // Scale mode: fixed-px players keep their size, scaled to the window.
-  function fitBox(sheet, win, w, h) {
-    const scale = Math.min(win.innerWidth / w, win.innerHeight / h);
-    const x = (win.innerWidth - w * scale) / 2, y = (win.innerHeight - h * scale) / 2;
-    sheet.replaceSync(`${strong('[data-pip-subs-box]')} { position: absolute !important; inset: 0 auto auto 0 !important;
-      width: ${w}px !important; height: ${h}px !important; min-width: 0 !important; min-height: 0 !important;
-      max-width: none !important; max-height: none !important; margin: 0 !important; box-sizing: border-box !important;
-      transform-origin: 0 0 !important; transform: translate(${x}px, ${y}px) scale(${scale}) !important; }`);
+  // Scale mode, for fixed-px players: the video alone grows to the window; the rest keeps its px size
+  // (shrinks only to fit), aligned to the video's bottom. Unscaled controls also keep the player's click math right.
+  // `g`: box size and the video's offset/size inside it, in px.
+  function fitBox(sheet, win, g) {
+    const W = win.innerWidth, H = win.innerHeight;
+    const k = Math.min(1, W / g.w, H / g.h);
+    const s = Math.min(W / g.vw, H / g.vh);
+    const vx = (W - g.vw * s) / 2, vy = (H - g.vh * s) / 2;
+    const clamp = (v, max) => Math.max(0, Math.min(v, max));
+    const bx = clamp(W / 2 - (g.vx + g.vw / 2) * k, W - g.w * k), by = clamp(vy + g.vh * s - (g.vy + g.vh) * k, H - g.h * k);
+    const tx = (vx - bx) / k - g.vx, ty = (vy - by) / k - g.vy;
+    sheet.replaceSync(`
+      ${strong('[data-pip-subs-box]')} { position: absolute !important; inset: 0 auto auto 0 !important;
+        width: ${g.w}px !important; height: ${g.h}px !important; min-width: 0 !important; min-height: 0 !important;
+        max-width: none !important; max-height: none !important; margin: 0 !important; box-sizing: border-box !important;
+        transform-origin: 0 0 !important; transform: translate(${bx}px, ${by}px) scale(${k}) !important; }
+      ${strong('[data-pip-subs-unclip]')} { overflow: visible !important; contain: none !important; clip-path: none !important; }
+      ${strong('video[data-pip-subs-unclip]')} { transform-origin: 0 0 !important;
+        transform: translate(${tx}px, ${ty}px) scale(${s / k}) !important; }
+    `);
+  }
+
+  // The grown video must not be clipped by the player's own boxes. Returns undo.
+  function unclip(box, video) {
+    const marked = [];
+    for (let el = video; el; el = el === box ? null : up(el)) {
+      el.setAttribute('data-pip-subs-unclip', '');
+      marked.push(el);
+    }
+    return () => marked.forEach(el => el.removeAttribute('data-pip-subs-unclip'));
   }
 
   // Inline styles keep CSS variables and fonts; !important dropped so shell rules win.
@@ -300,8 +322,12 @@
       throw e;
     }
 
+    const vr = video.getBoundingClientRect();
+    const geo = vr.width && vr.height
+      ? { w: r.width, h: r.height, vx: vr.left - r.left, vy: vr.top - r.top, vw: vr.width, vh: vr.height }
+      : { w: r.width, h: r.height, vx: 0, vy: 0, vw: r.width, vh: r.height };
     const fitSheet = new win.CSSStyleSheet();
-    const fit = () => fitBox(fitSheet, win, r.width, r.height);
+    const fit = () => fitBox(fitSheet, win, geo);
     const ownSheets = [baseSheet(win), fitSheet];
     syncStyles(win, box, ownSheets);
     const host = buildShell(win.document, box);
@@ -311,7 +337,7 @@
     const hidden = parts.filter(e => getComputedStyle(e).display === 'none');
     const before = partsLayout(parts.slice(0, 400), box);
     box.before(placeholder);
-    let unfill = markFill(box, video);
+    let undoMode = markFill(box, video);
     host.append(box);
     if (wasPlaying && video.paused) video.play().catch(() => {});
     nudgeLayout();
@@ -323,8 +349,8 @@
     const check = () => {
       if (scaled || followsResize(before, partsLayout(parts.slice(0, 400), box))) return;
       scaled = true;
-      unfill();
-      unfill = () => {};
+      undoMode();
+      undoMode = unclip(box, video);
       box.setAttribute('data-pip-subs-box', '');
       fit();
     };
@@ -355,7 +381,7 @@
         clearInterval(timer);
         clearTimeout(checkTimer);
         const playing = !video.paused;
-        unfill();
+        undoMode();
         unhide();
         box.removeAttribute('data-pip-subs-box');
         placeholder.replaceWith(box);
