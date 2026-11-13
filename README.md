@@ -1,11 +1,11 @@
 # PiP the Player (PiPtP)
 
 A Chrome extension that moves a site's whole video player into a Picture-in-Picture window, **with its controls and
-subtitles**. Chrome's built-in PiP shows only the bare video.
+subtitles**.
 
-![YouTube's player with captions and controls in a PiP window over the page](docs/pip-window.jpg)
+▶ [Watch the demo](docs/demo.mp4)
 
-▶ [Watch the demo video](docs/demo.mp4) (17 s): opening the window, the player's controls, seek zones, dragging the window, back to tab.
+![The player in a PiP window, with subtitles, controls and a seek zone](docs/seek-zone.jpg)
 
 ## Features
 
