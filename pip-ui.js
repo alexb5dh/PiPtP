@@ -1,5 +1,4 @@
-// PiP window extras, like Chrome's own video PiP: drag the video to move the window, click its sides to seek.
-// Both act only on the picture itself: controls and text (subtitles) drawn over it keep their clicks.
+// PiP extras like Chrome's video PiP: drag the picture to move the window, click its sides to seek. Controls keep their clicks.
 (() => {
   if (window.__pipSubsUi && globalThis.chrome?.runtime?.id) return;
 
@@ -105,8 +104,7 @@
     };
   }
 
-  // Drag on the picture moves the window; a click on it inside a side zone seeks. The page can't move a PiP window
-  // (moveBy is ignored there), so drag positions go to the background, which uses chrome.windows.
+  // Picture drag moves the window via the background (moveBy is ignored in PiP); a click in a side zone seeks.
   function pictureGestures(win, video, glows) {
     let press = null, swallow = false, raf = 0, pos = null;
     const flush = () => {
