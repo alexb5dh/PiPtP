@@ -163,9 +163,10 @@
   }
 
   // Briefly stretches the player (hidden) far from its page size to see whether its layout follows.
+  // Opacity, not visibility: parts with their own `visibility: visible` would still show.
   async function probeResponsive(sheet, box, parts, before, g) {
     sheet.replaceSync(`${strong('[data-pip-subs-probe]')} { width: ${g.w * 1.6}px !important; height: ${g.h * 1.6}px !important;
-      visibility: hidden !important; }`);
+      opacity: 0 !important; }`);
     box.setAttribute('data-pip-subs-probe', '');
     nudgeLayout();
     await new Promise(r => setTimeout(r, 250));
