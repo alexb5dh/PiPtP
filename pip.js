@@ -5,9 +5,9 @@
   const MIN_W = 160, MIN_H = 90;
   let session = null;
 
-  function* allVideos(root = document) {
-    yield* root.querySelectorAll('video');
-    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) yield* allVideos(el.shadowRoot);
+  function* deepQuery(sel, root = document) {
+    yield* root.querySelectorAll(sel);
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) yield* deepQuery(sel, el.shadowRoot);
   }
 
   function visibleArea(el) {
@@ -19,7 +19,7 @@
 
   function findVideo() {
     let best = null, bestScore = 0;
-    for (const v of allVideos()) {
+    for (const v of deepQuery('video')) {
       const r = v.getBoundingClientRect();
       if (r.width < MIN_W || r.height < MIN_H || v.readyState === 0) continue;
       const score = visibleArea(v) * (v.paused ? 1 : 4);
@@ -321,6 +321,31 @@
     return ph;
   }
 
+  // Moving an iframe to another document reloads it, dropping listeners on its window (e.g. a player's resize sensor).
+  // Blank (script-filled) ones wait in the placeholder instead; moveBefore() keeps them alive. Returns undo.
+  function keepFrames(box, placeholder) {
+    if (!placeholder.moveBefore) return () => {};
+    const shelf = document.createElement('div');
+    shelf.style.cssText = 'position: absolute; inset: 0; visibility: hidden; pointer-events: none; overflow: hidden;';
+    placeholder.append(shelf);
+    const kept = [];
+    for (const frame of deepQuery('iframe', box)) {
+      if (frame.hasAttribute('srcdoc') || !/^(about:blank)?$/.test(frame.getAttribute('src') ?? '')) continue;
+      const mark = document.createComment('');
+      frame.before(mark);
+      try {
+        shelf.moveBefore(frame, null);
+        kept.push([frame, mark]);
+      } catch {
+        mark.remove();
+      }
+    }
+    return () => kept.forEach(([frame, mark]) => {
+      if (mark.isConnected && mark.ownerDocument === document) mark.parentNode.moveBefore(frame, mark);
+      mark.remove();
+    });
+  }
+
   const MODS = ['ctrlKey', 'shiftKey', 'altKey', 'metaKey'];
   const KEY = [KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat', ...MODS]];
   const MOUSE_PROPS = ['clientX', 'clientY', 'screenX', 'screenY', 'movementX', 'movementY', 'button', 'buttons', 'detail', ...MODS];
@@ -420,6 +445,7 @@
     const sample = parts.slice(0, 400);
     const before = partsLayout(sample, box);
     box.before(placeholder);
+    const restoreFrames = keepFrames(box, placeholder);
     let undoMode = markFill(box, video);
     host.append(box);
     if (wasPlaying && video.paused) video.play().catch(() => {});
@@ -471,7 +497,9 @@
         unhide();
         box.removeAttribute('data-pip-subs-box');
         box.removeAttribute('data-pip-subs-frame');
-        placeholder.replaceWith(box);
+        placeholder.before(box);
+        restoreFrames();
+        placeholder.remove();
         if (playing && video.paused) video.play().catch(() => {});
         session = null;
         setTimeout(nudgeLayout, 50);
