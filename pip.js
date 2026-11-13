@@ -195,10 +195,10 @@
   })));
 
   // Scale mode (fixed-px players): only the video grows; the rest keeps its on-page size.
-  // `g`: box size, video offset/size in it.
+  // `g`: box size, video offset/size in it. dpr ratio: same on-screen size if the PiP window renders at another scale.
   function fitBox(sheet, win, g) {
     const W = win.innerWidth, H = win.innerHeight;
-    const k = Math.min(1, W / g.w, H / g.h);
+    const k = Math.min(1, window.devicePixelRatio / win.devicePixelRatio, W / g.w, H / g.h);
     const s = Math.min(W / g.vw, H / g.vh);
     const vx = (W - g.vw * s) / 2, vy = (H - g.vh * s) / 2;
     const clamp = (v, max) => Math.max(0, Math.min(v, max));
@@ -213,7 +213,65 @@
       ${strong('video[data-pip-subs-unclip]')} { transform-origin: 0 0 !important;
         transform: translate(${tx}px, ${ty}px) scale(${s / k}) !important; }
     `);
-    return { k, x: bx, y: by };
+    return { k, x: bx, y: by, w: g.w, h: g.h, video: { l: vx, t: vy, r: vx + g.vw * s, b: vy + g.vh * s } };
+  }
+
+  const EDGE = 0.25;
+
+  // Scale mode: a box smaller than the video leaves its top and center parts (title, PiP button, play button) off place.
+  // `translate` (composes with the player's own transforms) moves them to the video's top edge/corners or center.
+  // Bottom-zone and off-center middle parts stay: they belong to the control bar, already on the video's bottom.
+  function edgeAnchors(win, box, video) {
+    const applied = new Map();
+    let frame = null, raf = 0;
+    const movedAncestor = el => {
+      for (let p = el.parentElement; p && p !== box; p = p.parentElement) if (applied.has(p)) return true;
+      return false;
+    };
+    // Offset in box px for a part, from its position without our offset; null: leave it.
+    function offset(el, f, d) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return applied.get(el) ?? null;
+      const [ax, ay] = applied.get(el)?.xy ?? [0, 0];
+      const w = r.width / f.k, h = r.height / f.k;
+      const x = (r.left - f.x) / f.k - ax, y = (r.top - f.y) / f.k - ay;
+      if (w * h > (f.w * f.h) / 4 || x < -4 || y < -4 || x + w > f.w + 4 || y + h > f.h + 4) return null;
+      const cx = (x + w / 2) / f.w, cy = (y + h / 2) / f.h;
+      const side = cx < EDGE ? d.left : cx > 1 - EDGE ? d.right : 0;
+      if (cy < EDGE) return { xy: [side, d.top] };
+      if (cy <= 1 - EDGE && !side) return { xy: [0, d.middle] };
+      return null;
+    }
+    function update() {
+      raf = 0;
+      const f = frame;
+      if (!f) return;
+      const d = {
+        left: (f.video.l - f.x) / f.k, right: (f.video.r - f.x - f.w * f.k) / f.k, top: (f.video.t - f.y) / f.k,
+        middle: ((f.video.t + f.video.b) / 2 - f.y - (f.h * f.k) / 2) / f.k,
+      };
+      for (const el of box.querySelectorAll('*')) {
+        if (el === video || el.contains(video) || movedAncestor(el)) continue;
+        const o = offset(el, f, d);
+        if (!o || (!o.xy[0] && !o.xy[1])) {
+          if (applied.delete(el)) el.style.removeProperty('translate');
+          continue;
+        }
+        applied.set(el, o);
+        const value = `${o.xy[0]}px ${o.xy[1]}px`;
+        if (el.style.getPropertyValue('translate') !== value) el.style.setProperty('translate', value, 'important');
+      }
+    }
+    const schedule = () => (raf ||= win.requestAnimationFrame(update));
+    const observer = new MutationObserver(schedule);
+    observer.observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'] });
+    return {
+      update(f) { frame = f; schedule(); },
+      stop() {
+        observer.disconnect();
+        for (const el of applied.keys()) el.style.removeProperty('translate');
+      },
+    };
   }
 
   // The grown video must not be clipped by the player's own boxes. Returns undo.
@@ -347,10 +405,11 @@
       ? { w: r.width, h: r.height, vx: vr.left - r.left, vy: vr.top - r.top, vw: vr.width, vh: vr.height }
       : { w: r.width, h: r.height, vx: 0, vy: 0, vw: r.width, vh: r.height };
     const fitSheet = new win.CSSStyleSheet();
-    let frame = null;
+    let frame = null, anchors = null;
     const fit = () => {
       frame = fitBox(fitSheet, win, geo);
       box.setAttribute('data-pip-subs-frame', `${frame.k},${frame.x},${frame.y}`);
+      anchors?.update(frame);
     };
     const ownSheets = [baseSheet(win), fitSheet];
     syncStyles(win, box, ownSheets);
@@ -376,7 +435,9 @@
       if (!probe.responsive && !closed) {
         scaled = true;
         undoMode();
-        undoMode = unclip(box, video);
+        const undoClip = unclip(box, video);
+        anchors = edgeAnchors(win, box, video);
+        undoMode = () => { anchors.stop(); undoClip(); };
         box.setAttribute('data-pip-subs-box', '');
         fit();
       }
