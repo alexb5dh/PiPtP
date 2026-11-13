@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "PiP with Subtitles",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Picture-in-Picture that keeps the site's own subtitles (moves the whole player into a Document PiP window).",
-  "permissions": ["scripting", "activeTab"],
+  "permissions": ["scripting", "activeTab", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "PiP with subtitles" },

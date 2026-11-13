@@ -380,8 +380,7 @@
 
   const nudgeLayout = () => window.dispatchEvent(new Event('resize'));
 
-  async function open() {
-    const video = findVideo();
+  async function open(video = findVideo()) {
     if (!video) return;
     if (!window.documentPictureInPicture || window !== window.top) {
       return document.pictureInPictureElement ? document.exitPictureInPicture() : video.requestPictureInPicture();
@@ -459,6 +458,8 @@
     }
     win.addEventListener('resize', onResize);
     ui = window.__pipSubsUi?.attach(win, video);
+    // The site's PiP button inside the window: its request bubbles to this document.
+    win.document.addEventListener('pip-subs-request', e => window.__pipSubsRequest?.(e));
 
     session = {
       win,
@@ -502,4 +503,15 @@
       return open();
     },
   };
+
+  // From override.js: a site's PiP button asked for PiP on this video. Replaces the listener of a previous load.
+  document.removeEventListener('pip-subs-request', window.__pipSubsRequest);
+  window.__pipSubsRequest = e => {
+    const video = e.composedPath()[0];
+    if (video?.localName !== 'video') return;
+    e.preventDefault();
+    if (session) session.win.close();
+    else open(video);
+  };
+  document.addEventListener('pip-subs-request', window.__pipSubsRequest);
 })();

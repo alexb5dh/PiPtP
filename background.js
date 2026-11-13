@@ -14,6 +14,33 @@ async function toggle(tabId) {
   }
 }
 
+// Option "Replace site PiP buttons": a checkbox in the toolbar icon's menu. When on, every page gets override.js
+// at start and the PiP code once loaded; when off, nothing runs until the shortcut.
+const OVERRIDE = 'override-site-pip';
+const OVERRIDE_SCRIPTS = [
+  { id: 'override-main', matches: ['<all_urls>'], allFrames: true, runAt: 'document_start', world: 'MAIN', js: ['main.js', 'override.js'] },
+  { id: 'override-pip', matches: ['<all_urls>'], allFrames: true, runAt: 'document_idle', js: ['pip-ui.js', 'pip.js'] },
+];
+
+async function applyOverride(on) {
+  const ids = OVERRIDE_SCRIPTS.map(s => s.id);
+  const registered = (await chrome.scripting.getRegisteredContentScripts({ ids })).map(s => s.id);
+  if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: registered });
+  if (on) await chrome.scripting.registerContentScripts(OVERRIDE_SCRIPTS);
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  const { [OVERRIDE]: on = false } = await chrome.storage.local.get(OVERRIDE);
+  chrome.contextMenus.create({ id: OVERRIDE, title: 'Replace site PiP buttons', type: 'checkbox', checked: on, contexts: ['action'] });
+  await applyOverride(on);
+});
+
+chrome.contextMenus.onClicked.addListener(async info => {
+  if (info.menuItemId !== OVERRIDE) return;
+  await chrome.storage.local.set({ [OVERRIDE]: info.checked });
+  await applyOverride(info.checked);
+});
+
 // Window drag from pip-ui.js. The PiP window is found by its bounds at drag start; moves are coalesced.
 let dragWindow = Promise.resolve(null), pending = null, busy = false;
 
