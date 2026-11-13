@@ -404,11 +404,12 @@
       ? { w: r.width, h: r.height, vx: vr.left - r.left, vy: vr.top - r.top, vw: vr.width, vh: vr.height }
       : { w: r.width, h: r.height, vx: 0, vy: 0, vw: r.width, vh: r.height };
     const fitSheet = new win.CSSStyleSheet();
-    let frame = null, anchors = null;
+    let frame = null, anchors = null, ui = null;
     const fit = () => {
       frame = fitBox(fitSheet, win, geo);
       box.setAttribute('data-pip-subs-frame', `${frame.k},${frame.x},${frame.y}`);
       anchors?.update(frame);
+      ui?.layout();
     };
     const ownSheets = [baseSheet(win), fitSheet];
     syncStyles(win, box, ownSheets);
@@ -457,6 +458,7 @@
       if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document, frame));
     }
     win.addEventListener('resize', onResize);
+    ui = window.__pipSubsUi?.attach(win, video);
 
     session = {
       win,
