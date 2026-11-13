@@ -131,6 +131,13 @@
       e.preventDefault();
     };
 
+    // The player saw the press start; end it so press-and-hold actions (e.g. 2x speed) stop.
+    const release = (target, e) => {
+      const init = { bubbles: true, composed: true, clientX: e.clientX, clientY: e.clientY, button: 0 };
+      target.dispatchEvent(new PointerEvent('pointerup', { ...init, pointerId: e.pointerId, isPrimary: true }));
+      target.dispatchEvent(new MouseEvent('mouseup', init));
+    };
+
     win.addEventListener('pointerdown', e => {
       const target = e.composedPath()[0];
       if (e.button !== 0 || !isPicture(target, video)) return;
@@ -150,6 +157,7 @@
         if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
         press.dragging = true;
         glows.hover(null);
+        release(press.target, e);
         send({ type: 'pip-drag-start', left: press.left, top: press.top, width: win.outerWidth, height: win.outerHeight });
         try { press.target.setPointerCapture(press.pointerId); } catch {}
       }
@@ -159,7 +167,7 @@
     win.document.documentElement.addEventListener('mouseleave', () => glows.hover(null));
 
     win.addEventListener('pointerup', e => {
-      if (!press) return;
+      if (!press || !e.isTrusted) return;
       const { dragging, side } = press;
       press = null;
       if (!dragging && side) seek(side);
