@@ -39,7 +39,7 @@
       const isHost = el.shadowRoot != null && box.getRootNode() === el.shadowRoot;
       if (el.localName.includes('-') && box !== video && !isHost) break;
       const r = el.getBoundingClientRect();
-      if (r.width > vr.width * 1.1 + 24 || r.height > vr.height * 1.25 + 64) break;
+      if (r.width > vr.width + 8 || r.height > vr.height * 1.25 + 64) break;
       box = el;
     }
     return box;
@@ -78,7 +78,7 @@
     return sheets;
   }
 
-  function syncStyles(win, node) {
+  function syncStyles(win, node, ownSheets) {
     const doc = win.document;
     doc.querySelectorAll('link[data-pip-subs]').forEach(l => l.remove());
     const adopted = [];
@@ -99,31 +99,98 @@
       copy.replaceSync(text);
       adopted.push(copy);
     }
-    adopted.push(ownSheet(win));
-    doc.adoptedStyleSheets = adopted;
+    doc.adoptedStyleSheets = [...adopted, ...ownSheets];
   }
 
   // `:is(x, #_#_#_)`: matches x with 3-id specificity, beats site !important rules.
-  function ownSheet(win) {
-    const strong = sel => `:is(${sel}, #_#_#_)`;
-    const fill = strong('html, body, [data-pip-subs-shell], [data-pip-subs-fill]');
+  const strong = sel => `:is(${sel}, #_#_#_)`;
+
+  const FILL = {
+    display: 'block', position: 'relative', inset: 'auto', width: '100%', height: '100%', 'min-width': '0', 'min-height': '0',
+    'max-width': 'none', 'max-height': 'none', margin: '0', padding: '0', border: '0', transform: 'none', overflow: 'hidden',
+  };
+  const FILL_VIDEO = { ...FILL, position: 'absolute', left: '0', top: '0', 'object-fit': 'contain' };
+  const css = props => Object.entries(props).map(([k, v]) => `${k}: ${v} !important;`).join(' ');
+
+  function baseSheet(win) {
     const shell = strong('html, body, [data-pip-subs-shell]');
     const s = new win.CSSStyleSheet();
     s.replaceSync(`
-      ${fill} { display: block !important; position: relative !important; inset: auto !important;
-        width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important;
-        max-width: none !important; max-height: none !important; margin: 0 !important; padding: 0 !important;
-        border: 0 !important; transform: none !important; overflow: hidden !important; visibility: visible !important;
-        float: none !important; zoom: 1 !important; }
-      ${shell} { background: #000 !important; }
+      ${shell} { ${css(FILL)} visibility: visible !important; float: none !important; zoom: 1 !important; background: #000 !important; }
       ${shell}::before, ${shell}::after { content: none !important; display: none !important; }
-      ${strong('video[data-pip-subs-fill]')} { position: absolute !important; left: 0 !important; top: 0 !important;
-        object-fit: contain !important; }
+      ${strong('[data-pip-subs-fill]')} { ${css(FILL)} }
+      ${strong('video[data-pip-subs-fill]')} { ${css(FILL_VIDEO)} }
     `);
     return s;
   }
 
-  // Inline styles keep CSS variables and fonts; !important dropped so fill rules win.
+  // Fill mode: stretches the player to the window, for players that re-lay out themselves. Returns undo.
+  // Shadow-root elements get inline styles: the PiP sheet can't reach them.
+  function markFill(box, video) {
+    const undo = [];
+    for (let el = video; el; el = el === box ? null : up(el)) {
+      if (el.getRootNode() instanceof ShadowRoot) {
+        const style = el.getAttribute('style');
+        for (const [k, v] of Object.entries(el === video ? FILL_VIDEO : FILL)) el.style.setProperty(k, v, 'important');
+        undo.push(() => (style == null ? el.removeAttribute('style') : el.setAttribute('style', style)));
+      } else if (!el.hasAttribute('data-pip-subs-fill')) {
+        el.setAttribute('data-pip-subs-fill', '');
+        undo.push(() => el.removeAttribute('data-pip-subs-fill'));
+      }
+    }
+    return () => undo.forEach(f => f());
+  }
+
+  // Centers of the player's parts relative to its size.
+  function partsLayout(parts, box) {
+    const b = box.getBoundingClientRect();
+    return parts.map(e => {
+      const r = e.getBoundingClientRect();
+      return r.width && r.height ? [(r.left + r.width / 2 - b.left) / b.width, (r.top + r.height / 2 - b.top) / b.height] : null;
+    });
+  }
+
+  // Fixed-px layouts keep parts at the old px positions, so their relative centers move.
+  function followsResize(before, after) {
+    let n = 0, moved = 0;
+    before.forEach((p, i) => {
+      const q = after[i];
+      if (!p || !q) return;
+      n++;
+      if (Math.abs(p[0] - q[0]) > 0.04 || Math.abs(p[1] - q[1]) > 0.04) moved++;
+    });
+    return n === 0 || moved / n < 0.2;
+  }
+
+  // Extension styles (ad blockers' hiding rules) aren't in document.styleSheets: re-hide what showed up. Returns undo.
+  function rehide(hidden) {
+    const undo = [];
+    for (const el of hidden) {
+      if (el.ownerDocument.defaultView.getComputedStyle(el).display === 'none') continue;
+      const value = el.style.getPropertyValue('display'), priority = el.style.getPropertyPriority('display');
+      el.style.setProperty('display', 'none', 'important');
+      undo.push(() => (value ? el.style.setProperty('display', value, priority) : el.style.removeProperty('display')));
+    }
+    return () => undo.forEach(f => f());
+  }
+
+  const linksLoaded = doc => Promise.all([...doc.querySelectorAll('link[data-pip-subs]')].map(l => new Promise(done => {
+    l.addEventListener('load', done);
+    l.addEventListener('error', done);
+    setTimeout(done, 2000);
+  })));
+
+  // Scale mode: for fixed-px players that ignore resizes; keeps the original size and scales it to the window.
+  function fitBox(sheet, win, w, h) {
+    const scale = Math.min(win.innerWidth / w, win.innerHeight / h);
+    const x = (win.innerWidth - w * scale) / 2, y = (win.innerHeight - h * scale) / 2;
+    sheet.replaceSync(`${strong('[data-pip-subs-box]')} { position: absolute !important; inset: 0 auto auto 0 !important;
+      width: ${w}px !important; height: ${h}px !important; min-width: 0 !important; min-height: 0 !important;
+      max-width: none !important; max-height: none !important; margin: 0 !important; box-sizing: border-box !important;
+      transform-origin: 0 0 !important; transform: translate(${x}px, ${y}px) scale(${scale}) !important; }`);
+  }
+
+  // Inline styles keep CSS variables and fonts; !important dropped so shell rules win.
   function copyAttributes(from, to) {
     for (const a of from.attributes) to.setAttribute(a.name, a.value);
     for (const name of [...to.style]) {
@@ -146,28 +213,6 @@
       parent = shell;
     }
     return parent;
-  }
-
-  const FILL = {
-    display: 'block', position: 'relative', inset: 'auto', width: '100%', height: '100%', 'min-width': '0', 'min-height': '0',
-    'max-width': 'none', 'max-height': 'none', margin: '0', padding: '0', border: '0', transform: 'none', overflow: 'hidden',
-  };
-  const FILL_VIDEO = { ...FILL, position: 'absolute', left: '0', top: '0', 'object-fit': 'contain' };
-
-  // Returns undo. Shadow-root elements get inline styles: the PiP sheet can't reach them.
-  function markFill(box, video) {
-    const undo = [];
-    for (let el = video; el; el = el === box ? null : up(el)) {
-      if (el.getRootNode() instanceof ShadowRoot) {
-        const style = el.getAttribute('style');
-        for (const [k, v] of Object.entries(el === video ? FILL_VIDEO : FILL)) el.style.setProperty(k, v, 'important');
-        undo.push(() => (style == null ? el.removeAttribute('style') : el.setAttribute('style', style)));
-      } else if (!el.hasAttribute('data-pip-subs-fill')) {
-        el.setAttribute('data-pip-subs-fill', '');
-        undo.push(() => el.removeAttribute('data-pip-subs-fill'));
-      }
-    }
-    return () => undo.forEach(f => f());
   }
 
   function makePlaceholder(box) {
@@ -256,19 +301,46 @@
       throw e;
     }
 
-    syncStyles(win, box);
+    const fitSheet = new win.CSSStyleSheet();
+    const fit = () => fitBox(fitSheet, win, r.width, r.height);
+    const ownSheets = [baseSheet(win), fitSheet];
+    syncStyles(win, box, ownSheets);
     const host = buildShell(win.document, box);
     const placeholder = makePlaceholder(box);
     const wasPlaying = !video.paused;
+    const parts = [...box.querySelectorAll('*')].filter(e => e !== video);
+    const hidden = parts.filter(e => getComputedStyle(e).display === 'none');
+    const before = partsLayout(parts.slice(0, 400), box);
     box.before(placeholder);
-    const unmark = markFill(box, video);
+    let unfill = markFill(box, video);
     host.append(box);
     if (wasPlaying && video.paused) video.play().catch(() => {});
+    nudgeLayout();
+
+    let unhide = () => {};
+    linksLoaded(win.document).then(() => (unhide = rehide(hidden)));
+
+    let scaled = false, checkTimer = 0;
+    const check = () => {
+      if (scaled || followsResize(before, partsLayout(parts.slice(0, 400), box))) return;
+      scaled = true;
+      unfill();
+      unfill = () => {};
+      box.setAttribute('data-pip-subs-box', '');
+      fit();
+    };
+    checkTimer = setTimeout(check, 300);
+    const onResize = () => {
+      if (scaled) return fit();
+      nudgeLayout();
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(check, 300);
+    };
 
     let signature = sheetsSignature(placeholder);
     const timer = setInterval(() => {
       const s = sheetsSignature(placeholder);
-      if (s !== signature) { signature = s; syncStyles(win, placeholder); }
+      if (s !== signature) { signature = s; syncStyles(win, placeholder, ownSheets); }
     }, 1000);
     const key = e => onKey(e, video);
     win.addEventListener('keydown', key);
@@ -276,15 +348,17 @@
     for (const type of Object.keys(FORWARDED)) {
       if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document));
     }
-    win.addEventListener('resize', nudgeLayout);
-    setTimeout(nudgeLayout, 50);
+    win.addEventListener('resize', onResize);
 
     session = {
       win,
       close() {
         clearInterval(timer);
+        clearTimeout(checkTimer);
         const playing = !video.paused;
-        unmark();
+        unfill();
+        unhide();
+        box.removeAttribute('data-pip-subs-box');
         placeholder.replaceWith(box);
         if (playing && video.paused) video.play().catch(() => {});
         session = null;
