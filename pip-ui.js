@@ -38,12 +38,14 @@
       color: #fff; font: 600 12px system-ui, sans-serif; opacity: 0; transition: opacity .15s; }
     .zone.shown { opacity: .5; }
     .zone.hover { opacity: 1; }
-    .left { background: radial-gradient(ellipse at left center, rgba(255,255,255,.4), rgba(255,255,255,0) 75%), rgba(0,0,0,.2); }
-    .right { background: radial-gradient(ellipse at right center, rgba(255,255,255,.4), rgba(255,255,255,0) 75%), rgba(0,0,0,.2); }
+    .left { background: radial-gradient(ellipse at left center, rgba(255,255,255,.4), rgba(255,255,255,0) 75%),
+      linear-gradient(to right, rgba(0,0,0,.3), rgba(0,0,0,0)); }
+    .right { background: radial-gradient(ellipse at right center, rgba(255,255,255,.4), rgba(255,255,255,0) 75%),
+      linear-gradient(to left, rgba(0,0,0,.3), rgba(0,0,0,0)); }
     .zone svg { width: 28px; height: 28px; filter: drop-shadow(0 0 2px rgba(0,0,0,.8)); }
     .zone span { text-shadow: 0 0 3px rgba(0,0,0,.9); }
     .zone.flash { animation: flash .35s ease-out; }
-    @keyframes flash { from { background-color: rgba(255,255,255,.35); } }
+    @keyframes flash { from { filter: brightness(2.2); } }
   `;
 
   function arrow(doc, dir) {
