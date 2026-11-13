@@ -1,5 +1,6 @@
 (() => {
-  if (window.__pipSubs) return;
+  // No runtime id: left over from before an extension reload, so replace it.
+  if (window.__pipSubs && chrome.runtime?.id) return;
 
   const MIN_W = 160, MIN_H = 90;
   let session = null;
