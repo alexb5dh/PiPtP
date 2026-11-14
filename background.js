@@ -46,11 +46,13 @@ chrome.contextMenus.onClicked.addListener(async info => {
 });
 
 // Window drag from pip-ui.js. The PiP window is found by its bounds at drag start; moves are coalesced.
-let dragWindow = Promise.resolve(null), pending = null, busy = false;
+let dragWindow = Promise.resolve(null), pending = null, busy = false, last = null;
 
 chrome.runtime.onMessage.addListener(m => {
-  if (m.type === 'pip-drag-start') dragWindow = findWindow(m);
-  else if (m.type === 'pip-drag') {
+  if (m.type === 'pip-drag-start') {
+    dragWindow = findWindow(m);
+    last = { left: m.left, top: m.top };
+  } else if (m.type === 'pip-drag') {
     pending = { left: m.left, top: m.top };
     pump();
   }
@@ -69,7 +71,23 @@ async function pump() {
     const pos = pending;
     pending = null;
     const id = await dragWindow;
-    if (id != null) await chrome.windows.update(id, pos).catch(() => {});
+    if (id != null) await moveWindow(id, pos);
   }
   busy = false;
+}
+
+const tryMove = (id, pos) => chrome.windows.update(id, pos).then(w => ((last = { left: w.left, top: w.top }), true), () => false);
+
+// Chrome refuses bounds less than half on screen: go as far as allowed, per axis so the window still slides along the edge.
+async function moveWindow(id, pos) {
+  if (await tryMove(id, pos)) return;
+  for (const k of ['left', 'top']) {
+    let ok = last[k], bad = pos[k];
+    if (ok === bad || await tryMove(id, { ...last, [k]: bad })) continue;
+    while (Math.abs(bad - ok) > 1) {
+      const mid = Math.round((ok + bad) / 2);
+      if (await tryMove(id, { ...last, [k]: mid })) ok = mid;
+      else bad = mid;
+    }
+  }
 }
