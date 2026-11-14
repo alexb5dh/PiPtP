@@ -362,11 +362,12 @@
   const FORWARDED = {
     keydown: KEY, keyup: KEY, mousemove: MOUSE, mouseup: MOUSE, pointermove: POINTER, pointerup: POINTER, pointercancel: POINTER,
   };
+  const WHEEL = [WheelEvent, [...MOUSE_PROPS, 'deltaX', 'deltaY', 'deltaZ', 'deltaMode']];
+  const WHEEL_STEP = 0.05;
 
   // PiP events never reach the page's document-level handlers (shortcuts, slider drags): re-dispatch there.
   // `frame`: scaled box, coords go unscaled like main.js reports them.
-  function forward(e, target, frame) {
-    const [Type, props] = FORWARDED[e.type];
+  function forward(e, target, frame, [Type, props] = FORWARDED[e.type]) {
     const init = Object.fromEntries(props.map(k => [k, e[k]]));
     if (frame && 'clientX' in init) {
       init.clientX = frame.x + (init.clientX - frame.x) / frame.k;
@@ -388,6 +389,24 @@
     const before = videoState(video);
     await new Promise(r => setTimeout(r, 200));
     if (!reacted(before, video)) action();
+  }
+
+  // A part under the pointer (menu, list) that can still scroll that way.
+  function scrolls(e) {
+    return e.composedPath().some(el => {
+      if (el.nodeType !== 1 || !/auto|scroll/.test(el.ownerDocument.defaultView.getComputedStyle(el).overflowY)) return false;
+      return e.deltaY < 0 ? el.scrollTop > 0 : el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    });
+  }
+
+  // Wheel volume (WHEEL_STEP per 100 px) unless the player or the page took the wheel. `before`: state when it started.
+  function onWheel(e, video, before, frame) {
+    if (e.defaultPrevented || !e.deltaY || MODS.some(m => e[m]) || scrolls(e) || reacted(before, video)) return;
+    e.preventDefault();
+    if (forward(e, document.body ?? document.documentElement, frame, WHEEL) || reacted(before, video)) return;
+    const px = e.deltaY * [1, 40, 800][e.deltaMode];
+    video.volume = Math.max(0, Math.min(1, video.volume - (px / 100) * WHEEL_STEP));
+    if (px < 0) video.muted = false;
   }
 
   const videoState = v => ({ paused: v.paused, time: v.currentTime, at: performance.now(), volume: v.volume, muted: v.muted });
@@ -488,6 +507,9 @@
     const key = e => onKey(e, video);
     win.addEventListener('keydown', key);
     win.addEventListener('keyup', key);
+    let wheelStart = null;
+    win.addEventListener('wheel', () => (wheelStart = videoState(video)), { capture: true, passive: true });
+    win.addEventListener('wheel', e => onWheel(e, video, wheelStart, frame), { passive: false });
     for (const type of Object.keys(FORWARDED)) {
       if (!type.startsWith('key')) win.addEventListener(type, e => forward(e, document, frame));
     }

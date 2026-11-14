@@ -10,6 +10,7 @@ https://github.com/user-attachments/assets/830b3571-d79d-41aa-b8c9-67036f60baf0
 - **Subtitles in PiP** - styling, language and timing exactly as on the page.
 - **The player's own controls** - the seek bar, volume, and subtitle and quality menus keep working in the PiP window.
 - **Keyboard** - the site's shortcuts work in the PiP window. Fallback keys for sites without them: `Space`/`K` play/pause, `←`/`→` seek 5 s, `↑`/`↓` volume, `M` mute.
+- **Mouse wheel** - volume, unless the site uses the wheel itself. Scrollable menus keep scrolling.
 - **Drag the video to move the window** - like Chrome's own PiP. Controls and subtitles still get their clicks.
 - **Seek zones** - hovering the video shows zones on its left and right; a click there seeks 10 s back or forward. They hide after a short time with no mouse movement.
 - Activated by `Alt+P` by default, configurable in Chrome keyboard shortcuts.
