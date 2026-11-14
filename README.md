@@ -14,6 +14,9 @@ https://github.com/user-attachments/assets/830b3571-d79d-41aa-b8c9-67036f60baf0
 - **Seek zones** - hovering the video shows zones on its left and right; a click there seeks 10 s back or forward. They hide after a short time with no mouse movement.
 - Activated by `Alt+P` by default, configurable in Chrome keyboard shortcuts.
 - **Optional: replace site PiP buttons** - a site's own PiP button opens this window instead of Chrome's native PiP.
+- **Optional: pause on exit** - closing the PiP window pauses the video.
+
+Options are checkboxes in the extension icon's right-click menu.
 
 ## Layout
 

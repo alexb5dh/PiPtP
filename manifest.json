@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PiP the Player",
   "short_name": "PiPtP",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "description": "Moves a site's whole video player into a Picture-in-Picture window, with its controls and subtitles.",
   "permissions": ["scripting", "activeTab", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],

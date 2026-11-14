@@ -17,6 +17,15 @@
     return w > 0 && h > 0 ? w * h : 0;
   }
 
+  // Stored by background.js; false once the extension was reloaded (chrome.storage throws then).
+  function option(key) {
+    try {
+      return chrome.storage.local.get(key).then(o => !!o[key], () => false);
+    } catch {
+      return Promise.resolve(false);
+    }
+  }
+
   function findVideo() {
     let best = null, bestScore = 0;
     for (const v of deepQuery('video')) {
@@ -439,6 +448,7 @@
     const host = buildShell(win.document, box);
     const placeholder = makePlaceholder(box);
     const wasPlaying = !video.paused;
+    const pauseOnExit = option('pause-on-exit');
     const parts = [...box.querySelectorAll('*')].filter(e => e !== video);
     const hidden = parts.filter(e => getComputedStyle(e).display === 'none');
     const sample = parts.slice(0, 400);
@@ -499,7 +509,10 @@
         placeholder.before(box);
         restoreFrames();
         placeholder.remove();
-        if (playing && video.paused) video.play().catch(() => {});
+        pauseOnExit.then(pause => {
+          if (pause) video.pause();
+          else if (playing && video.paused) video.play().catch(() => {});
+        });
         session = null;
         setTimeout(nudgeLayout, 50);
       },

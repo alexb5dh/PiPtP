@@ -28,16 +28,21 @@ async function applyOverride(on) {
   if (on) await chrome.scripting.registerContentScripts(OVERRIDE_SCRIPTS);
 }
 
+// Icon menu checkboxes, stored under their ids; pip.js reads 'pause-on-exit'.
+const OPTIONS = { [OVERRIDE]: 'Replace site PiP buttons', 'pause-on-exit': 'Pause on exit' };
+
 chrome.runtime.onInstalled.addListener(async () => {
-  const { [OVERRIDE]: on = false } = await chrome.storage.local.get(OVERRIDE);
-  chrome.contextMenus.create({ id: OVERRIDE, title: 'Replace site PiP buttons', type: 'checkbox', checked: on, contexts: ['action'] });
-  await applyOverride(on);
+  const stored = await chrome.storage.local.get(Object.keys(OPTIONS));
+  for (const [id, title] of Object.entries(OPTIONS)) {
+    chrome.contextMenus.create({ id, title, type: 'checkbox', checked: !!stored[id], contexts: ['action'] });
+  }
+  await applyOverride(!!stored[OVERRIDE]);
 });
 
 chrome.contextMenus.onClicked.addListener(async info => {
-  if (info.menuItemId !== OVERRIDE) return;
-  await chrome.storage.local.set({ [OVERRIDE]: info.checked });
-  await applyOverride(info.checked);
+  if (!(info.menuItemId in OPTIONS)) return;
+  await chrome.storage.local.set({ [info.menuItemId]: info.checked });
+  if (info.menuItemId === OVERRIDE) await applyOverride(info.checked);
 });
 
 // Window drag from pip-ui.js. The PiP window is found by its bounds at drag start; moves are coalesced.
