@@ -1,4 +1,4 @@
-// Page world. Playerjs ignores volume set outside its API (empty volumechange handler), so its bar wouldn't follow.
+// Playerjs ignores volume change wihout API, so its bar doesn't follow
 (() => {
   document.removeEventListener('pip-subs-volume', window.__pipSubsPlayerjs);
   window.__pipSubsPlayerjs = e => {

@@ -331,6 +331,8 @@
     return ph;
   }
 
+  const sensors = new Set();
+
   // Moved iframes reload and lose their listeners (resize sensors): keep blank ones on the page. Returns undo.
   function keepFrames(box, placeholder) {
     if (!placeholder.moveBefore) return () => {};
@@ -345,11 +347,13 @@
       try {
         shelf.moveBefore(frame, null);
         kept.push([frame, mark]);
+        sensors.add(frame);
       } catch {
         mark.remove();
       }
     }
     return () => kept.forEach(([frame, mark]) => {
+      sensors.delete(frame);
       if (mark.isConnected && mark.ownerDocument === document) mark.parentNode.moveBefore(frame, mark);
       mark.remove();
     });
@@ -440,7 +444,8 @@
     }[e.key] ?? null;
   }
 
-  const nudgeLayout = () => window.dispatchEvent(new Event('resize'));
+  // Kept sensors don't see the player's size change: they get the resize too.
+  const nudgeLayout = () => [window, ...[...sensors].map(f => f.contentWindow)].forEach(w => w?.dispatchEvent(new Event('resize')));
 
   async function open(video = findVideo()) {
     if (!video) return;
@@ -494,7 +499,6 @@
 
     let scaled = false, closed = false;
     probeResponsive(fitSheet, box, sample, before, geo).then(probe => {
-      nudgeLayout();
       if (!probe.responsive && !closed) {
         scaled = true;
         undoMode();
@@ -504,6 +508,7 @@
         box.setAttribute('data-pip-subs-box', '');
         fit();
       }
+      nudgeLayout();
       console.info('pip-subs', JSON.stringify({ mode: scaled ? 'scale' : 'fill', probe, frame, box: box.id || box.className,
         geo, win: [win.innerWidth, win.innerHeight], dpr: [window.devicePixelRatio, win.devicePixelRatio] }));
     });
