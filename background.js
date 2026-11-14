@@ -6,7 +6,7 @@ async function toggle(tabId) {
   const target = { tabId, allFrames: true };
   try {
     await Promise.all([
-      chrome.scripting.executeScript({ target, files: ['main.js'], world: 'MAIN' }),
+      chrome.scripting.executeScript({ target, files: ['main.js', 'players/playerjs.js'], world: 'MAIN' }),
       chrome.scripting.executeScript({ target, files: ['pip-ui.js', 'pip.js', 'toggle.js'] }),
     ]);
   } catch (e) {
@@ -17,7 +17,7 @@ async function toggle(tabId) {
 // Option "Replace site PiP buttons" (icon menu checkbox): when on, all pages load override.js and the PiP code.
 const OVERRIDE = 'override-site-pip';
 const OVERRIDE_SCRIPTS = [
-  { id: 'override-main', matches: ['<all_urls>'], allFrames: true, runAt: 'document_start', world: 'MAIN', js: ['main.js', 'override.js'] },
+  { id: 'override-main', matches: ['<all_urls>'], allFrames: true, runAt: 'document_start', world: 'MAIN', js: ['main.js', 'override.js', 'players/playerjs.js'] },
   { id: 'override-pip', matches: ['<all_urls>'], allFrames: true, runAt: 'document_idle', js: ['pip-ui.js', 'pip.js'] },
 ];
 

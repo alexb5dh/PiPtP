@@ -321,6 +321,7 @@
     const r = box.getBoundingClientRect();
     const cs = getComputedStyle(box);
     const ph = document.createElement('div');
+    ph.setAttribute('data-pip-subs-placeholder', '');
     ph.textContent = 'Playing in Picture-in-Picture';
     Object.assign(ph.style, {
       width: `${r.width}px`, height: `${r.height}px`, position: cs.position === 'static' ? 'relative' : cs.position,
@@ -405,8 +406,17 @@
     e.preventDefault();
     if (forward(e, document.body ?? document.documentElement, frame, WHEEL) || reacted(before, video)) return;
     const px = e.deltaY * [1, 40, 800][e.deltaMode];
-    video.volume = Math.max(0, Math.min(1, video.volume - (px / 100) * WHEEL_STEP));
-    if (px < 0) video.muted = false;
+    setVolume(video, video.volume - (px / 100) * WHEEL_STEP, px < 0 ? false : video.muted);
+  }
+
+  // Player adapters (players/) can take it to keep their own UI in sync; detail is JSON to cross worlds.
+  function setVolume(video, volume, muted = video.muted) {
+    volume = Math.max(0, Math.min(1, volume));
+    const e = new CustomEvent('pip-subs-volume', { detail: JSON.stringify({ volume, muted }), cancelable: true });
+    document.dispatchEvent(e);
+    if (e.defaultPrevented) return;
+    video.volume = volume;
+    video.muted = muted;
   }
 
   const videoState = v => ({ paused: v.paused, time: v.currentTime, at: performance.now(), volume: v.volume, muted: v.muted });
@@ -424,9 +434,9 @@
       k: toggle,
       ArrowLeft: () => (video.currentTime -= 5),
       ArrowRight: () => (video.currentTime += 5),
-      ArrowUp: () => (video.volume = Math.min(1, video.volume + 0.1)),
-      ArrowDown: () => (video.volume = Math.max(0, video.volume - 0.1)),
-      m: () => (video.muted = !video.muted),
+      ArrowUp: () => setVolume(video, video.volume + 0.1),
+      ArrowDown: () => setVolume(video, video.volume - 0.1),
+      m: () => setVolume(video, video.volume, !video.muted),
     }[e.key] ?? null;
   }
 
